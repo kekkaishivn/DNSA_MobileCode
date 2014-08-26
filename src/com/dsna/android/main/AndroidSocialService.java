@@ -28,6 +28,7 @@ import rice.p2p.past.PastContent;
 import rice.p2p.scribe.Topic;
 import rice.pastry.JoinFailedException;
 
+import com.dsna.contact.AddingContactFragment;
 import com.dsna.dht.past.DSNAPastContent;
 import com.dsna.entity.BaseEntity;
 import com.dsna.entity.Location;
@@ -110,9 +111,11 @@ public class AndroidSocialService extends Service implements IdBasedSecureSocial
       	mBootIp = intent.getStringExtra(MainActivity.bIp);
       	mUsername = intent.getStringExtra(MainActivity.uName);
       	if (googleCloudHandler == null) {
+      		System.out.println("TRY TO CREATE SOME GOOGLE CLOUD HANLDER");
       		GoogleAccountCredential credential = GoogleAccountCredential.usingOAuth2(this, Arrays.asList(DriveScopes.DRIVE));
-      		credential.setSelectedAccountName("dsnatest1@gmail.com");
+      		credential.setSelectedAccountName(mUsername);
       		drive = new Drive.Builder(AndroidHttp.newCompatibleTransport(), new GsonFactory(), credential).build();
+      		System.out.println(mUsername);
       		googleCloudHandler = new GoogleCloudStorageServiceImpl(drive);
       	}      	
 	      new Thread(ignite).start();
@@ -165,7 +168,6 @@ public class AndroidSocialService extends Service implements IdBasedSecureSocial
 			Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
 			cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 			byte[] encryptedBytes = cipher.doFinal(plain.getBytes());
-			System.out.println("EEncrypted?????" + Base64.encodeBase64String(encryptedBytes));
 			return encryptedBytes;
 		}
 
@@ -176,7 +178,6 @@ public class AndroidSocialService extends Service implements IdBasedSecureSocial
 			cipher1.init(Cipher.DECRYPT_MODE, privateKey);
 			byte[] decryptedBytes = cipher1.doFinal(encryptedBytes);
 			String decrypted = new String(decryptedBytes);
-			System.out.println("DDecrypted?????" + decrypted);
 			return decrypted;
 		}
 
@@ -185,7 +186,7 @@ public class AndroidSocialService extends Service implements IdBasedSecureSocial
 
 	    // Loads pastry configurations
 	    Environment env = new Environment();
-
+	    System.out.println("IGNITE SERVICE: ");
 	    // disable the UPnP setting (in case you are testing this on a NATted LAN)
 	    env.getParameters().setString("nat_search_policy","never");
 	    env.getParameters().setString("firewall_test_policy","always");
@@ -203,9 +204,15 @@ public class AndroidSocialService extends Service implements IdBasedSecureSocial
 					serviceHandler = factory.newDSNAIdBasedSecureSocialService(Integer.parseInt(mBindPort), Integer.parseInt(mBootPort), mBootIp, AndroidSocialService.this, mUsername);
 				else
 					serviceHandler = factory.newDSNAIdBasedSecureSocialService(Integer.parseInt(mBindPort), Integer.parseInt(mBootPort), mBootIp, AndroidSocialService.this, user, lastSeqs);
+				
+				user = serviceHandler.getUserProfile();
+				System.out.println("serviceHandler: " + serviceHandler);
+				System.out.println("SocialProfile: " + user.getUserId());
+				System.out.println("GOOGLE_CLOUD: " + googleCloudHandler);
+				//System.out.println("Do extra stuff with: " + user.getUserId());
+				serviceHandler.pushProfileToDHT();
 				serviceHandler.addCloudHandler(Location.GOOGLE_CLOUD, googleCloudHandler);
 				serviceHandler.initSubscribe();
-				serviceHandler.pushProfileToDHT();
 
 			} catch (IOException e1) {
 				// TODO Auto-generated catch block
@@ -219,7 +226,10 @@ public class AndroidSocialService extends Service implements IdBasedSecureSocial
 				// TODO Auto-generated catch block
 				//Toast.makeText(getApplicationContext(), "Cannot start DSNA social service", Toast.LENGTH_LONG).show();
 				AndroidSocialService.this.stopSelf();
-			}    	
+			} catch (Exception e)	{
+				System.out.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+				e.printStackTrace();
+			}
 
     }
   }

@@ -36,8 +36,8 @@ public class LoginActivity extends Activity implements ConnectionCallbacks,
 	 */
 	private UserLoginTask mAuthTask = null;
 	
-	public static final String defaultUsername = "dsnatest1@gmail.com";
-	public static final String defaultBootIp = "192.168.1.102";
+	public static final String defaultUsername = "dsnatest2@gmail.com";
+	public static final String defaultBootIp = "192.168.0.100";
 	public static final String defaultBindPort = "9001";
 	public static final String defaultBootPort = "9001";
 	

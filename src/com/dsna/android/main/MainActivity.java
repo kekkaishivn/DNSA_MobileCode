@@ -71,15 +71,21 @@ import com.dsna.message.bubblechat.OneMessage;
 import com.dsna.service.IdBasedSecureSocialEventListener;
 import com.dsna.service.IdBasedSecureSocialService;
 import com.dsna.status.PostStatusFragment;
+import com.dsna.storage.cloud.CloudStorageService;
+import com.dsna.storage.cloud.GoogleCloudStorageServiceImpl;
 import com.dsna.util.ASN1Util;
 import com.dsna.util.FileUtil;
 import com.dsna.util.NetworkUtil;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
 import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
+import com.google.api.client.extensions.android.http.AndroidHttp;
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
+import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.repackaged.org.apache.commons.codec.binary.Base64;
 import com.google.api.services.drive.Drive;
+import com.google.api.services.drive.DriveScopes;
 
 import android.app.Activity;
 import android.app.FragmentManager;
@@ -121,6 +127,7 @@ import it.unisa.dia.gas.plaf.jpbc.util.Arrays;
 public class MainActivity extends Activity implements ConnectionCallbacks, 
 		OnConnectionFailedListener {
 		
+		static final int REQUEST_AUTHORIZATION = 0;
 		public static final String publicKeyURL = "https://130.237.20.200:8080/DSNA_privatekeygenerator/SystemPublic.txt";
 		public static final String secretKeyURL = "https://130.237.20.200:8080/DSNA_privatekeygenerator/KeyExtract.jsp";
 		public static final String idParams = "clientid";
@@ -258,29 +265,10 @@ public class MainActivity extends Activity implements ConnectionCallbacks,
     @Override
     protected void onPause() {
       super.onPause();
-      uploadResultToCloud();
       unbindService(mConnection);
       LocalBroadcastManager bManager = LocalBroadcastManager.getInstance(this);
       bManager.unregisterReceiver(bReceiver);
     }	
-    
-    private void uploadResultToCloud() {
-    	new Thread( new Runnable()	{
-    		public void run()	{
-          try {
-          	InputStream is = new ByteArrayInputStream(logBatteryAndProcessResult.toString().getBytes());
-          	System.out.println(logBatteryAndProcessResult.toString());
-    				service.googleCloudHandler.uploadContentToFriendOnlyFolder("batterycase1000plainstatus" + System.currentTimeMillis() + ".txt", "text/plain", "dsna", is);
-    			} catch (UserRecoverableAuthIOException e) {
-    				// TODO Auto-generated catch block
-    				e.printStackTrace();
-    			} catch (IOException e) {
-    				// TODO Auto-generated catch block
-    				e.printStackTrace();
-    			}
-    		}
-    	}).start();
-		}
 
 		private ServiceConnection mConnection = new ServiceConnection() {
 
@@ -296,6 +284,10 @@ public class MainActivity extends Activity implements ConnectionCallbacks,
         service = null;
       }
     };
+    
+    public void handleUserRecoverableAuthIOException(UserRecoverableAuthIOException ex)	{
+    	this.startActivityForResult(ex.getIntent(), REQUEST_AUTHORIZATION);
+    }
 
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -343,6 +335,11 @@ public class MainActivity extends Activity implements ConnectionCallbacks,
         secretKeys = null;
         ps06 = new PS06();
         cd07 = new IBBECD07();	
+        
+    		GoogleAccountCredential credential = GoogleAccountCredential.usingOAuth2(this, java.util.Arrays.asList(DriveScopes.DRIVE));
+    		credential.setSelectedAccountName(mUsername);
+    		new googleCloudAuthorizationRequestTask().execute(credential);
+              
     }
 
     @Override
@@ -613,7 +610,13 @@ public class MainActivity extends Activity implements ConnectionCallbacks,
   	}
   	
   	public boolean addFriend(final SocialProfile newFriend)	{
-  		return service.addFriend(newFriend);
+  		if(service.addFriend(newFriend))	{
+  			Message welcomeMessage = newFriend.createMessage(newFriend.getOwnerUsername() + " is added to your friend list");
+  			welcomeMessage.setConversation(newFriend.getOwnerUsername());
+  			dbHelper.addMessage(welcomeMessage);
+  			return true;
+  		}
+  		return false;
   	}
   	
   	public void postStatus(final String status) throws UserRecoverableAuthIOException, IOException	{
@@ -712,6 +715,36 @@ public class MainActivity extends Activity implements ConnectionCallbacks,
 			
 		}
 		
+		private class googleCloudAuthorizationRequestTask extends AsyncTask<GoogleAccountCredential, Void, UserRecoverableAuthIOException>	{
+			 @Override
+		    protected UserRecoverableAuthIOException doInBackground(GoogleAccountCredential... credentials) {
+
+	      	if (credentials.length>0 && credentials[0] != null) {
+	      		try	{
+	          	CloudStorageService googleCloudHandler = null;	
+	          	Drive drive;
+	          	System.out.println("TRY TO AUTHENTICATE SOME GOOGLE CLOUD HANLDER");
+	          	System.out.println(credentials[0].getSelectedAccountName());
+          		drive = new Drive.Builder(AndroidHttp.newCompatibleTransport(), new GsonFactory(), credentials[0]).build();
+          		googleCloudHandler = new GoogleCloudStorageServiceImpl(drive);	
+          		googleCloudHandler.initializeDSNAFolders();
+	      		} catch(UserRecoverableAuthIOException urai)	{
+	      			return urai;
+	      		} catch(IOException ioe)	{
+	      			return null;
+	      		}
+	      	} 
+				 return null;
+		    }
+
+		    @Override
+		    protected void onPostExecute(UserRecoverableAuthIOException urai) {
+		    	if (urai!=null)	{
+		    		MainActivity.this.startActivityForResult(urai.getIntent(), MainActivity.REQUEST_AUTHORIZATION);
+		    	}
+		    }			
+		}
+		
 		private class decapsulateNewSessionKeyTask extends AsyncTask<KeyHeader, Void, String> {
 	    @Override
 	    protected String doInBackground(KeyHeader... arg) {
@@ -749,6 +782,8 @@ public class MainActivity extends Activity implements ConnectionCallbacks,
 	    	}
 	    }
 	  }
+		
+
 		
 		private class changeSessionKeyTask extends AsyncTask<KeyHeader, Void, String> {
 	    @Override
